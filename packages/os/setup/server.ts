@@ -1,16 +1,16 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { Server } from "bun";
 import { AdbFlasherBackend } from "./src/backend/adb-backend";
+import { DependencyManager } from "./src/backend/dependencies";
 import { SideloaderIosBackend } from "./src/backend/ios-backend";
 import { createIosHandler } from "./src/backend/ios-handler";
 import type {
+  DependencyId,
   FlashPlan,
   FlashRequest,
   FlashStepId,
   FlashStepStatus,
 } from "./src/backend/types";
-import { DependencyManager } from "./src/backend/dependencies";
-import type { DependencyId } from "./src/backend/types";
 
 const VALID_DEP_IDS: DependencyId[] = [
   "adb",

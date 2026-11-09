@@ -90,6 +90,17 @@ import {
 } from "./clock-handoff.ts";
 import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
 import {
+  describeFilesOperation,
+  FILES_CAPABILITY,
+  FILES_DIRECT_TYPES,
+  type FilesAgentOperation,
+  type FilesIdentity,
+  filesContextAllowed,
+  filesNeedsIdentity,
+  isFilesOperation,
+  validateFilesOperation,
+} from "./files-browser-contract.ts";
+import {
   type ForegroundReviewOperation,
   type ForegroundReviewResult,
   foregroundReviewOperationAvailable,
@@ -126,17 +137,6 @@ import {
   validateLibraryOperation,
   validateLibraryResult,
 } from "./photo-library-contract.ts";
-import {
-  describeFilesOperation,
-  FILES_CAPABILITY,
-  FILES_DIRECT_TYPES,
-  type FilesAgentOperation,
-  type FilesIdentity,
-  filesContextAllowed,
-  filesNeedsIdentity,
-  isFilesOperation,
-  validateFilesOperation,
-} from "./files-browser-contract.ts";
 import {
   isReminderOperation,
   type ReminderOperation,

@@ -36,16 +36,16 @@ import {
 } from "./contract.ts";
 import { formatDeviceRecordDateTime } from "./device-record-presentation.ts";
 import {
+  DEVICE_APPROVAL_REVIEW_TEXT,
+  deviceActionEffectReceipts,
+  deviceApprovalPersistenceReceipt,
+} from "./effect-receipts.ts";
+import {
   FILES_CAPABILITY,
   FILES_GUIDANCE,
   FILES_OPERATION_SCHEMAS,
   isFilesOperation,
 } from "./files-browser-contract.ts";
-import {
-  DEVICE_APPROVAL_REVIEW_TEXT,
-  deviceActionEffectReceipts,
-  deviceApprovalPersistenceReceipt,
-} from "./effect-receipts.ts";
 import {
   isForegroundReviewOperation,
   isForegroundReviewType,

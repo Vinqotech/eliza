@@ -1063,21 +1063,36 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
     const granted = access === "granted";
     // Browse (no search box and no Recents: the agent filters, decision F2).
     const primary = volumes.find((v) => v.primary) ?? volumes[0];
-    const rootFolder: Extract<Place, { kind: "folder" }> = { kind: "folder", path: "" };
+    const rootFolder: Extract<Place, { kind: "folder" }> = {
+      kind: "folder",
+      path: "",
+    };
     const newFolder = () => {
       if (!granted || busy || !primary) return;
       const target = place.kind === "folder" ? place : rootFolder;
       if (place.kind !== "folder") go(target);
       dialogTrigger = null;
-      dialog = { kind: "name", op: "create", path: target.path, value: "", ...onVolume(target.volume) };
+      dialog = {
+        kind: "name",
+        op: "create",
+        path: target.path,
+        value: "",
+        ...onVolume(target.volume),
+      };
       currentApi.set({ menu: false });
     };
     out.toolbar = {
       ready: granted && !busy && !!primary && place.kind !== "trash",
       canCreate: place.kind === "browse" || place.kind === "folder",
       newFolder,
-      sort: () => { if (place.kind === "browse") go(rootFolder); currentApi.set({ menu: true }); },
-      toggleView: () => { if (place.kind === "browse") go(rootFolder); currentApi.set({ grid: !state.grid }); },
+      sort: () => {
+        if (place.kind === "browse") go(rootFolder);
+        currentApi.set({ menu: true });
+      },
+      toggleView: () => {
+        if (place.kind === "browse") go(rootFolder);
+        currentApi.set({ grid: !state.grid });
+      },
       viewLabel: state.grid ? "List view" : "Grid view",
       viewIcon: state.grid ? ICONS.rows : ICONS.grid,
     };
@@ -1171,7 +1186,9 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
               at.category)
             : at.path
               ? baseName(at.path)
-              : at.volume ? volumeName : "All files";
+              : at.volume
+                ? volumeName
+                : "All files";
       let items: Record<string, unknown>[] = [];
       if (at.kind === "trash") {
         items = trashItems.map((item) => ({
@@ -1231,11 +1248,12 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
           tap: () => go({ kind: "folder", path: group.folder }),
         }));
       } else
-        items = sortEntries(entries, sort, state.sortReverse === true).map((entry) =>
-          entryRow(
-            entry,
-            at.kind === "category" && at.category !== "downloads",
-          ),
+        items = sortEntries(entries, sort, state.sortReverse === true).map(
+          (entry) =>
+            entryRow(
+              entry,
+              at.kind === "category" && at.category !== "downloads",
+            ),
         );
       const listed =
         at.kind === "folder" ||
@@ -1281,16 +1299,37 @@ export function installFilesBrowserAdapter<Selection extends FilesSelection>(
         moreD: ICONS.more,
         menuRows: [
           ...(["name", "date", "size"] as SortMode[]).map((mode) => ({
-            label: SORT_LABELS[mode] + (sort === mode ? " · " + (mode === "name" ? (state.sortReverse ? "Z–A" : "A–Z") : mode === "date" ? (state.sortReverse ? "Oldest first" : "Newest first") : (state.sortReverse ? "Smallest first" : "Largest first")) : ""),
+            label:
+              SORT_LABELS[mode] +
+              (sort === mode
+                ? " · " +
+                  (mode === "name"
+                    ? state.sortReverse
+                      ? "Z–A"
+                      : "A–Z"
+                    : mode === "date"
+                      ? state.sortReverse
+                        ? "Oldest first"
+                        : "Newest first"
+                      : state.sortReverse
+                        ? "Smallest first"
+                        : "Largest first")
+                : ""),
             d: ICONS.sort,
             on: sort === mode,
-            go: () => currentApi.set({ menu: false, sort: mode, sortReverse: sort === mode ? !state.sortReverse : false }),
+            go: () =>
+              currentApi.set({
+                menu: false,
+                sort: mode,
+                sortReverse: sort === mode ? !state.sortReverse : false,
+              }),
           })),
           {
             label: "Reverse order",
             d: ICONS.sort,
             on: state.sortReverse === true,
-            go: () => currentApi.set({ menu: false, sortReverse: !state.sortReverse }),
+            go: () =>
+              currentApi.set({ menu: false, sortReverse: !state.sortReverse }),
           },
           ...(listed && items.length
             ? [
