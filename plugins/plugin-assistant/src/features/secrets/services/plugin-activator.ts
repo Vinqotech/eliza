@@ -84,6 +84,8 @@ export class PluginActivatorService extends Service {
   private activatedPlugins: Set<string> = new Set();
   private pluginSecretMapping: Map<string, Set<string>> = new Map();
   private pollingInterval: ReturnType<typeof setInterval> | null = null;
+  /** Set by stop(): a later registerPlugin must not start a poll on a stopped service. */
+  private stopped = false;
   private activePoll: Promise<void> | null = null;
   private activationPromises: Map<string, Promise<boolean>> = new Map();
   private unsubscribeSecretChanges: (() => void) | null = null;
@@ -221,6 +223,7 @@ export class PluginActivatorService extends Service {
   async stop(): Promise<void> {
     logger.info("[PluginActivator] Stopping");
 
+    this.stopped = true;
     this.stopPolling();
 
     if (this.unsubscribeSecretChanges) {
@@ -684,6 +687,7 @@ export class PluginActivatorService extends Service {
   private startPolling(): void {
     if (
       this.pollingInterval ||
+      this.stopped ||
       !this.activatorConfig.enableAutoActivation ||
       this.activatorConfig.pollingIntervalMs <= 0
     ) {

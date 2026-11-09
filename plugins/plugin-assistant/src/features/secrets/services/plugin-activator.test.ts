@@ -75,3 +75,28 @@ test("polls only while a plugin waits for its secrets", async () => {
 
   await activator.stop();
 });
+
+test("a plugin registered after stop does not start a poll", async () => {
+  const activator = await PluginActivatorService.start(createRuntime(), {
+    pollingIntervalMs: 1000,
+    maxWaitMs: 0,
+  });
+  await activator.stop();
+
+  const ready = await activator.registerPlugin(
+    {
+      name: "late-plugin",
+      description: "Registered after stop",
+      requiredSecrets: {
+        PENDING_API_KEY: {
+          description: "Key",
+          type: "api_key",
+          required: true,
+        },
+      },
+    },
+    async () => {},
+  );
+  expect(ready).toBe(false);
+  expect(vi.getTimerCount()).toBe(0);
+});
