@@ -21,6 +21,8 @@
  * Operations keep one flat shape, so a validated operation validates again
  * unchanged (journal recovery re-reads it).
  */
+import type { ActionParameterSchema } from "@elizaos/core/schema-types";
+
 export const FILES_CAPABILITY = "files.browser.v1";
 export const FILES_OPERATION_TYPES = [
   "files_filter",
@@ -315,7 +317,7 @@ const filesPaths = {
   description: "1-50 paths on Internal storage",
 } as const;
 /** Tool schema branches (one per operation, disjoint by `type`). */
-export const FILES_OPERATION_SCHEMAS = [
+export const FILES_OPERATION_SCHEMAS: ActionParameterSchema[] = [
   {
     type: "object",
     additionalProperties: false,

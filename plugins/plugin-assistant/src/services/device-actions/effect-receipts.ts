@@ -237,6 +237,14 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
       return true;
     case "calendar_named":
       return operation.action === "read";
+    case "files_filter":
+    case "files_open":
+      return true;
+    case "files_share":
+    case "files_move":
+    case "files_trash":
+    case "files_folder_create":
+      return false;
     case "notes_named":
     case "reminder_named":
     case "notes_update":
