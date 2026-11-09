@@ -211,10 +211,13 @@ export async function watchMountedAppUpdates(
   let checking = false;
   let notified = false;
   let editingAtFreeze = false;
-  const editing = () =>
-    !!document.querySelector(
-      'input:focus,textarea:focus,[contenteditable="true"]:focus',
+  const editing = () => {
+    const element = document.activeElement;
+    return (
+      element instanceof HTMLElement &&
+      (element.matches("input,textarea") || element.isContentEditable)
     );
+  };
   const stopNavigation = (event: Event) => {
     if (!active) return;
     event.preventDefault();
@@ -376,6 +379,7 @@ export function createAppUpdateScheduler(options: {
   if (
     !Number.isSafeInteger(interval) ||
     interval <= 0 ||
+    interval > 2_147_483_647 ||
     !Number.isSafeInteger(retry) ||
     retry <= 0 ||
     retry > interval
