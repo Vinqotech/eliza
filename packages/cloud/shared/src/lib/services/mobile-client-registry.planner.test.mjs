@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   parseRegisteredMobileClients,
   planRegisteredMobileClientAppIdUpdate,
+  planRegisteredMobileClientLifetimeUpdate,
   selectRegisteredMobileClient,
 } from "./mobile-client-registry.ts";
 
@@ -102,4 +103,78 @@ test("replacement UUID collisions and malformed or invalid non-target source fai
     assert.equal(p.ok, false);
     assert.equal("registryJson" in p, false);
   }
+});
+
+test("lifetime plan preserves all app bindings, non-target values and row order", () => {
+  const tail = {
+    clientId: "org.example.tail",
+    appId: "55555555-5555-4555-8555-555555555555",
+    redirectUri: "https://eliza.app/tail/auth/callback",
+    enabled: true,
+  };
+  const rows = [other, target, tail],
+    raw = JSON.stringify(rows, null, 2);
+  const plan = planRegisteredMobileClientLifetimeUpdate(raw, target.clientId, 31536000, reserved);
+  assert.equal(plan.ok, true);
+  assert.equal(plan.changed, true);
+  assert.deepEqual(JSON.parse(plan.registryJson), [
+    other,
+    { ...target, credentialTtlSeconds: 31536000 },
+    tail,
+  ]);
+  assert.equal(raw, JSON.stringify(rows, null, 2));
+  const padded = `  ${plan.registryJson}\n`;
+  assert.deepEqual(
+    planRegisteredMobileClientLifetimeUpdate(padded, target.clientId, 31536000, reserved),
+    {
+      ok: true,
+      changed: false,
+      registryJson: padded,
+    },
+  );
+});
+
+test("lifetime plan accepts explicit server bounds and rejects absent, fractional or out-of-range values", () => {
+  const { credentialTtlSeconds: _old, ...defaulted } = target;
+  const raw = JSON.stringify([other, defaulted]);
+  for (const seconds of [86400, 31536000]) {
+    const plan = planRegisteredMobileClientLifetimeUpdate(raw, target.clientId, seconds, reserved);
+    assert.equal(plan.ok, true);
+    assert.equal(JSON.parse(plan.registryJson)[1].credentialTtlSeconds, seconds);
+  }
+  for (const seconds of [undefined, null, "31536000", 0, 86399, 31536001, 86400.5, Infinity, NaN]) {
+    const plan = planRegisteredMobileClientLifetimeUpdate(raw, target.clientId, seconds, reserved);
+    assert.deepEqual(plan, { ok: false, code: "server_configuration_error" });
+  }
+});
+
+test("lifetime plan cannot add, enable or repair an invalid registration", () => {
+  for (const rows of [[], [other], [{ ...target, enabled: false }]])
+    assert.deepEqual(
+      planRegisteredMobileClientLifetimeUpdate(
+        JSON.stringify(rows),
+        target.clientId,
+        31536000,
+        reserved,
+      ),
+      { ok: false, code: "invalid_client" },
+    );
+  assert.deepEqual(
+    planRegisteredMobileClientLifetimeUpdate(
+      JSON.stringify([target]),
+      reserved.clientId,
+      31536000,
+      reserved,
+    ),
+    { ok: false, code: "invalid_client" },
+  );
+  for (const raw of [
+    "{",
+    JSON.stringify([target, { ...other, credentialTtlSeconds: 0 }]),
+    JSON.stringify([{ ...target, scopes: ["admin"] }]),
+  ])
+    assert.deepEqual(
+      planRegisteredMobileClientLifetimeUpdate(raw, target.clientId, 31536000, reserved),
+      { ok: false, code: "server_configuration_error" },
+    );
 });

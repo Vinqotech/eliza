@@ -5,7 +5,10 @@ import { join, resolve } from "node:path";
 import sodium from "libsodium-wrappers";
 import pg from "pg";
 import { readDatabaseIdentityReceipt } from "../../../cloud/scripts/admin/database-identity-receipt.ts";
-import { parseRegisteredMobileClients } from "../../../cloud/shared/src/lib/services/mobile-client-registry.ts";
+import {
+  parseRegisteredMobileClients,
+  planRegisteredMobileClientLifetimeUpdate,
+} from "../../../cloud/shared/src/lib/services/mobile-client-registry.ts";
 import {
   type RegistrationRepairClient,
   repairRegistrationTransaction,
@@ -298,6 +301,39 @@ export function buildRegistryAddition(input: AdditionInput, appId: string) {
   };
 }
 
+/** Change only an existing client's lifetime; never provision an absent registration. */
+export function buildRegistryLifetimeUpdate(
+  input: AdditionInput,
+  appId: string,
+  credentialTtlSeconds: number,
+) {
+  const update = planRegisteredMobileClientLifetimeUpdate(
+    input.registry,
+    input.clientId,
+    credentialTtlSeconds,
+    {
+      clientId: MOBILE_APP_AUTH_CLIENT_ID,
+      appId: input.primaryAppId,
+      redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+    },
+  );
+  if (!update.ok) fail(update.code);
+  const plan = buildRegistryAddition(
+    { ...input, registry: update.registryJson },
+    appId,
+  );
+  return {
+    ...plan,
+    changed: plan.candidate !== input.registry,
+    sourceSha256: registryDigest(input.registry),
+    credentialTtlSeconds,
+    // Planning does not inspect or update the deployed Worker. The operator must
+    // deploy this cap before publication; old 90-day runtimes reject a year.
+    requiredRuntimeMaxCredentialTtlSeconds: credentialTtlSeconds,
+    appliesTo: "new-credentials-only" as const,
+  };
+}
+
 export function trustedGithubKey(repository: string, environment: string) {
   if (repository === REPOSITORY) {
     if (environment === "production") return PRODUCTION_KEY;
@@ -312,13 +348,14 @@ export async function sealRegistryPlan(
   binding: RegisteredAppBinding,
   repository: string,
   sourceCommit: string,
+  credentialTtlSeconds?: number,
 ) {
   const publicKey = trustedGithubKey(repository, input.environment);
   if (!/^[a-f0-9]{40}$/.test(sourceCommit)) fail("source_commit");
-  const { candidate, ...manifest } = buildRegistryAddition(
-    input,
-    binding.appId,
-  );
+  const { candidate, ...manifest } =
+    credentialTtlSeconds === undefined
+      ? buildRegistryAddition(input, binding.appId)
+      : buildRegistryLifetimeUpdate(input, binding.appId, credentialTtlSeconds);
   await sodium.ready;
   const seal = (value: string) => ({
     key_id: publicKey.key_id,
@@ -795,6 +832,7 @@ async function main() {
     operation === "verify-publisher";
   if (
     operation !== "plan-addition" &&
+    operation !== "plan-lifetime" &&
     operation !== "publish-registry" &&
     operation !== "plan-provision" &&
     operation !== "provision-registry" &&
@@ -810,6 +848,24 @@ async function main() {
       : "configured",
   );
   trustedGithubKey(process.env.GITHUB_REPOSITORY ?? "", input.environment);
+  let credentialTtlSeconds: number | undefined;
+  if (operation === "plan-lifetime") {
+    const raw = process.env.ELIZA_MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS ?? "";
+    if (!/^[1-9]\d*$/.test(raw)) fail("credential_lifetime_required");
+    credentialTtlSeconds = Number(raw);
+    // Validate source, selection and cap before opening the read-only DB snapshot.
+    const planned = planRegisteredMobileClientLifetimeUpdate(
+      input.registry,
+      input.clientId,
+      credentialTtlSeconds,
+      {
+        clientId: MOBILE_APP_AUTH_CLIENT_ID,
+        appId: input.primaryAppId,
+        redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+      },
+    );
+    if (!planned.ok) fail(planned.code);
+  }
   const { url, ssl } = mobileAppAuthDatabaseConnection(
     process.env.DATABASE_URL ?? "",
   );
@@ -855,13 +911,14 @@ async function main() {
     await database.query(REGISTRY_SNAPSHOT_SQL);
     if (
       operation === "plan-addition" ||
+      operation === "plan-lifetime" ||
       operation === "plan-provision" ||
       operation === "plan-provision-primary"
     ) {
       const repository = process.env.GITHUB_REPOSITORY ?? "";
       const sourceCommit = process.env.GITHUB_SHA ?? "";
       const plan =
-        operation !== "plan-addition"
+        operation !== "plan-addition" && operation !== "plan-lifetime"
           ? await planRegistryProvisioning(
               database,
               input,
@@ -873,6 +930,7 @@ async function main() {
               await discoverRegisteredApp(database, input),
               repository,
               sourceCommit,
+              credentialTtlSeconds,
             );
       const outputRoot = process.env.RUNNER_TEMP;
       if (
@@ -906,6 +964,13 @@ async function main() {
           requiresCreation: plan.requiresCreation,
           changed: plan.changed,
           plaintextExported: false,
+          ...(operation === "plan-lifetime"
+            ? {
+                credentialTtlSeconds,
+                requiredRuntimeMaxCredentialTtlSeconds: credentialTtlSeconds,
+                appliesTo: "new-credentials-only",
+              }
+            : {}),
         }),
       );
     } else {

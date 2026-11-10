@@ -145,3 +145,32 @@ export function planRegisteredMobileClientAppIdUpdate(
   const validated = parseRegisteredMobileClients(registryJson, reserved);
   return validated.ok ? { ok: true, changed: true, registryJson } : validated;
 }
+
+/** Plan one enabled client's explicit credential lifetime; keep every other field and row. */
+export function planRegisteredMobileClientLifetimeUpdate(
+  raw: unknown,
+  clientId: string,
+  credentialTtlSeconds: number,
+  reserved: MobileClientReservation,
+): MobileClientRegistryUpdatePlan {
+  const parsed = parseRegisteredMobileClients(raw, reserved);
+  if (!parsed.ok) return parsed;
+  if (
+    !Number.isInteger(credentialTtlSeconds) ||
+    credentialTtlSeconds < MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS ||
+    credentialTtlSeconds > MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS
+  )
+    return { ok: false, code: "server_configuration_error" };
+  const index = parsed.registrations.findIndex(
+    (entry) => entry.clientId === clientId && entry.enabled,
+  );
+  if (index < 0) return { ok: false, code: "invalid_client" };
+  const current = parsed.registrations[index];
+  if (current.credentialTtlSeconds === credentialTtlSeconds)
+    return { ok: true, changed: false, registryJson: raw as string };
+  const next = parsed.registrations.slice();
+  next[index] = { ...current, credentialTtlSeconds };
+  const registryJson = JSON.stringify(next);
+  const validated = parseRegisteredMobileClients(registryJson, reserved);
+  return validated.ok ? { ok: true, changed: true, registryJson } : validated;
+}

@@ -7,6 +7,7 @@ import { readDatabaseIdentityReceipt } from "../../../cloud/scripts/admin/databa
 import {
   appBindingDigest,
   buildRegistryAddition,
+  buildRegistryLifetimeUpdate,
   discoverRegisteredApp,
   planRegistryProvisioning,
   provisionRegistry,
@@ -328,6 +329,145 @@ test("already-correct registration canonicalizes whitespace before hashing publi
   );
 });
 
+test("lifetime-only planning seals the complete preserved registry and reuses exact publication", async () => {
+  const existing = {
+    enabled: true,
+    redirectUri: CALLBACK,
+    appId: APP,
+    clientId,
+  };
+  const selected = {
+    ...input,
+    registry: ` \n${JSON.stringify([retained, existing], null, 2)}\n `,
+  };
+  const before = (await database.query("SELECT * FROM apps ORDER BY id")).rows;
+  const binding = await discoverRegisteredApp(readOnly, selected);
+  const plaintext = buildRegistryLifetimeUpdate(selected, APP, 31536000);
+  assert.deepEqual(JSON.parse(plaintext.candidate), [
+    retained,
+    { ...existing, credentialTtlSeconds: 31536000 },
+  ]);
+  assert.equal(plaintext.added, false);
+  assert.equal(plaintext.sourceSha256, registryDigest(selected.registry));
+  assert.equal(
+    plaintext.nonTargetSha256,
+    registryDigest(JSON.stringify([retained])),
+  );
+  await sodium.ready;
+  const sealedBytes = [],
+    originalSeal = sodium.crypto_box_seal;
+  sodium.crypto_box_seal = (message, key, ...rest) => {
+    sealedBytes.push({
+      text: sodium.to_string(message),
+      key: sodium.to_base64(key, sodium.base64_variants.ORIGINAL),
+    });
+    return originalSeal(message, key, ...rest);
+  };
+  let plan;
+  try {
+    plan = await sealRegistryPlan(
+      selected,
+      binding,
+      "elizaOS/eliza",
+      "a".repeat(40),
+      31536000,
+    );
+  } finally {
+    sodium.crypto_box_seal = originalSeal;
+  }
+  assert.deepEqual(
+    sealedBytes.map((value) => value.text),
+    [plaintext.candidate, selected.registry],
+  );
+  assert.ok(
+    sealedBytes.every(
+      (value) =>
+        value.key === trustedGithubKey("elizaOS/eliza", "production").key,
+    ),
+  );
+  assert.equal(plan.sourceSha256, registryDigest(selected.registry));
+  assert.equal(plan.candidateSha256, registryDigest(plaintext.candidate));
+  assert.equal(plan.nonTargetSha256, plaintext.nonTargetSha256);
+  assert.equal(plan.appBindingSha256, appBindingDigest(selected, binding));
+  assert.equal(plan.credentialTtlSeconds, 31536000);
+  assert.equal(plan.requiredRuntimeMaxCredentialTtlSeconds, 31536000);
+  assert.equal(plan.appliesTo, "new-credentials-only");
+  assert.equal(plan.requiresCreation, false);
+  assert.equal(JSON.stringify(plan).includes(APP), false);
+  assert.equal(JSON.stringify(plan).includes(ORG), false);
+  const requests = [];
+  await publishValidatedRegistry(
+    readOnly,
+    { ...selected, registry: plaintext.candidate },
+    {
+      candidateSha256: plan.candidateSha256,
+      nonTargetSha256: plan.nonTargetSha256,
+      appBindingSha256: plan.appBindingSha256,
+    },
+    "synthetic-token",
+    async (_url, options) => {
+      requests.push(options);
+      return options.method === "PUT"
+        ? Response.json({
+            success: true,
+            result: {
+              name: "ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON",
+              type: "secret_text",
+            },
+          })
+        : Response.json({ success: true, result: [] });
+    },
+  );
+  assert.deepEqual(
+    requests.map((value) => value.method ?? "GET"),
+    ["GET", "PUT"],
+  );
+  assert.equal(JSON.parse(requests[1].body).text, plaintext.candidate);
+  assert.deepEqual(
+    (await database.query("SELECT * FROM apps ORDER BY id")).rows,
+    before,
+  );
+});
+
+test("lifetime planning never adds a client or changes its callback, app or enabled state", () => {
+  assert.throws(
+    () => buildRegistryLifetimeUpdate(input, APP, 31536000),
+    /invalid_client/,
+  );
+  const registry = buildRegistryAddition(input, APP).candidate;
+  const selected = { ...input, registry };
+  for (const seconds of [0, 31536001, 86400.5])
+    assert.throws(
+      () => buildRegistryLifetimeUpdate(selected, APP, seconds),
+      /server_configuration_error/,
+    );
+  assert.throws(
+    () => buildRegistryLifetimeUpdate(selected, OTHER, 31536000),
+    /client_already_registered_differently/,
+  );
+  assert.throws(
+    () =>
+      buildRegistryLifetimeUpdate(
+        { ...selected, redirectUri: "https://wrong.example.org/return" },
+        APP,
+        31536000,
+      ),
+    /client_already_registered_differently/,
+  );
+  const disabled = JSON.parse(registry).map((row) =>
+    row.clientId === clientId ? { ...row, enabled: false } : row,
+  );
+  assert.throws(
+    () =>
+      buildRegistryLifetimeUpdate(
+        { ...selected, registry: JSON.stringify(disabled) },
+        APP,
+        31536000,
+      ),
+    /invalid_client/,
+  );
+});
+
 test("registry validation uses a repeatable read-only PostgreSQL transaction", async () => {
   await database.query(REGISTRY_SNAPSHOT_SQL);
   try {
@@ -625,6 +765,40 @@ test("CLI failures hide provider configuration and refuse an unprotected branch"
     assert.match(staging.stderr, /failed invariant=operation_failed/);
     assert.equal(staging.stderr.includes(secret), false);
     assert.equal(staging.stdout, "");
+  }
+});
+
+test("lifetime CLI refuses missing or invalid seconds before opening the database", () => {
+  const selected = buildRegistryAddition(input, APP).candidate;
+  const env = {
+    PATH: process.env.PATH,
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: "elizaOS/eliza",
+    GITHUB_REF: "refs/heads/main",
+    ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: "production",
+    ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: clientId,
+    ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: selected,
+    ELIZA_MOBILE_APP_AUTH_APP_ID: PRIMARY,
+  };
+  for (const seconds of ["", "fraction", "1.5", "31536001"]) {
+    const result = spawnSync(
+      process.execPath,
+      [
+        new URL("./plan-mobile-client-addition.ts", import.meta.url).pathname,
+        "plan-lifetime",
+      ],
+      {
+        env: { ...env, ELIZA_MOBILE_APP_AUTH_CREDENTIAL_TTL_SECONDS: seconds },
+        encoding: "utf8",
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(
+      result.stderr,
+      /failed invariant=(credential_lifetime_required|server_configuration_error)/,
+    );
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr.includes(APP), false);
   }
 });
 
