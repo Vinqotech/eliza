@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 export interface BridgeSettings {
   SRH_TOKEN: string;
   SRH_CONNECTION_STRING: string;
+  SRH_SECONDARY_TOKEN?: string;
 }
 
 export class BridgeConfigurationError extends Error {
@@ -41,6 +42,7 @@ export async function forwardBridgeRequest(
   request: Request,
   token: string | undefined,
   forward: (request: Request) => Promise<Response>,
+  secondaryToken?: string,
 ): Promise<Response> {
   if (!token?.trim()) {
     return new Response("Redis bridge unavailable", { status: 503 });
@@ -49,8 +51,20 @@ export async function forwardBridgeRequest(
   const actual = new TextEncoder().encode(
     request.headers.get("Authorization") ?? "",
   );
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
-    return new Response("Unauthorized", { status: 401 });
+  if (actual.length === expected.length && timingSafeEqual(actual, expected)) {
+    return forward(request);
   }
-  return forward(request);
+  if (secondaryToken?.trim()) {
+    const secondary = new TextEncoder().encode(`Bearer ${secondaryToken}`);
+    if (
+      actual.length === secondary.length &&
+      timingSafeEqual(actual, secondary)
+    ) {
+      // Keep the container credential and Redis connection unchanged during rotation.
+      const headers = new Headers(request.headers);
+      headers.set("Authorization", `Bearer ${token}`);
+      return forward(new Request(request, { headers }));
+    }
+  }
+  return new Response("Unauthorized", { status: 401 });
 }

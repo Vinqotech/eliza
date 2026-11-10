@@ -89,6 +89,62 @@ describe("Cloudflare Redis HTTP bridge", () => {
     ).toBe(failure);
   });
 
+  test("a secondary credential preserves the database protocol and existing clients", async () => {
+    const body = JSON.stringify([["GET", "existing-record"]]);
+    const request = new Request("https://bridge.test/pipeline", {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer replacement",
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    let calls = 0;
+    const response = await forwardBridgeRequest(
+      request,
+      "existing",
+      async (received) => {
+        calls++;
+        expect(received.url).toBe(request.url);
+        expect(received.method).toBe("POST");
+        expect(received.headers.get("Authorization")).toBe("Bearer existing");
+        expect(await received.text()).toBe(body);
+        return new Response("same-record");
+      },
+      "replacement",
+    );
+    expect(await response.text()).toBe("same-record");
+    expect(calls).toBe(1);
+    const old = new Request("https://bridge.test", {
+      headers: { Authorization: "Bearer existing" },
+    });
+    await forwardBridgeRequest(
+      old,
+      "existing",
+      async (received) => {
+        expect(received).toBe(old);
+        return new Response("ok");
+      },
+      "replacement",
+    );
+    for (const [primary, supplied, status] of [
+      ["existing", "wrong", 401],
+      [undefined, "replacement", 503],
+    ] as const) {
+      const denied = await forwardBridgeRequest(
+        new Request("https://bridge.test", {
+          headers: { Authorization: `Bearer ${supplied}` },
+        }),
+        primary,
+        async () => {
+          throw Error("Must not contact Redis");
+        },
+        "replacement",
+      );
+      expect(denied.status).toBe(status);
+    }
+  });
+
   test("requires externally reachable Redis and passes only owned settings", () => {
     for (const url of [
       "invalid",

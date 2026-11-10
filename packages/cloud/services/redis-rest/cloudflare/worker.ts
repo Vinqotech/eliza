@@ -22,8 +22,12 @@ export class RedisHttpBridge extends Container<Env> {
 
 export default {
   fetch(request: Request, env: Env): Promise<Response> {
-    return forwardBridgeRequest(request, env.SRH_TOKEN, (authenticated) =>
-      getContainer(env.BRIDGE, "redis-http").fetch(authenticated),
+    return forwardBridgeRequest(
+      request,
+      env.SRH_TOKEN,
+      (authenticated) =>
+        getContainer(env.BRIDGE, "redis-http").fetch(authenticated),
+      env.SRH_SECONDARY_TOKEN,
     );
   },
 };
