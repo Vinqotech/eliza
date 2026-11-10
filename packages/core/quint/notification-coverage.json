@@ -73,20 +73,25 @@
 			"packages/core/src/services/notification.ts",
 			"packages/core/src/runtime.ts",
 			"packages/core/src/runtime/service-lifecycle.ts",
-			"packages/core/test/notification.test.ts"
+			"packages/core/test/notification.test.ts",
+			"packages/core/src/plugin-lifecycle.ts",
+			"packages/core/src/logger.ts",
+			"packages/core/src/services/agent-event.ts"
 		],
 		"invariants": [
 			"BusyRequestsJoin",
 			"BackoffBlocksAdmission",
 			"OnlyFailedServicesStart",
 			"BoundedCooldown",
-			"PhaseMatchesAvailability"
+			"PhaseMatchesAvailability",
+			"CoolingCurrentEntryBacksOff",
+			"SuccessfulReceiptReleasesItsOwnMap"
 		],
 		"status": "partial",
 		"limitations": [
-			"Service replacement during recovery and concurrent runtimes require their separate lifecycle ownership models.",
-			"The model projects wall-clock changes away and uses elapsed seconds. The SQLite/runtime regression checks both wall-clock directions and the exact millisecond retry boundary, including repeated capped delays.",
-			"Exceptions from diagnostics and cross-process restart are outside this recovery projection."
+			"The numeric cooldown case covers elapsed seconds through the capped 30-second interval. A second ownership case covers two coordinator records during publication, class unload, replacement and delayed receipt delivery.",
+			"Actual log listeners, runtime ERROR_REPORTED observers and AgentEvent diagnostic subscribers may throw without discarding the current recovery entry or cooldown.",
+			"The registry generation and service teardown contracts remain in RuntimeLifecycle and ServiceLifecycle. Independent runtimes and cross-process recovery are outside this per-runtime model."
 		]
 	}
 ]

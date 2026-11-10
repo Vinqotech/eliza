@@ -25,6 +25,8 @@ if (
 }
 
 const requiredNames = new Set([
+	"NotificationService retains replacement cooldown when an older successful recovery receipt arrives late",
+	"NotificationService keeps recovery backoff when real log event and agent-error observers throw",
 	"NotificationService creates, stores, and returns a stamped notification",
 	"NotificationService preserves exact lifeops reminder bodies in storage and events while generic bodies normalize",
 	"NotificationService rejects an empty title",
@@ -118,6 +120,8 @@ const child = spawn(
 		"run",
 		"test/notification.test.ts",
 		"--maxWorkers=1",
+		"--no-cache",
+		`--fsModuleCachePath=${path.join(path.dirname(reportPath), "module-cache")}`,
 		"--retry=0",
 		"--reporter=json",
 		`--outputFile=${reportPath}`,
