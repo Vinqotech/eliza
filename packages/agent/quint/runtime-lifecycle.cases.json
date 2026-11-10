@@ -12,11 +12,14 @@
     "packages/core/src/runtime/service-lifecycle.ts",
     "packages/core/src/services/task.ts",
     "packages/core/src/services/task-scheduler.ts",
-    "packages/agent/test/hot-reload-shared-database.test.ts"
+    "packages/agent/test/hot-reload-shared-database.test.ts",
+    "packages/agent/src/api/server.ts",
+    "packages/agent/src/api/agent-admin-routes.ts",
+    "packages/agent/src/api/runtime-replacement-ownership.ts"
   ],
   "bounds": {
-    "domain": "Eight boot phases and two deferred task identities. A separate retirement projection has one outgoing and one active replacement runtime, a shared or distinct adapter, one initially active write or no write, and two original service-stop callbacks.",
-    "scope": "Finite boot/teardown safety and conditional retirement progress. Fast completion and lookup clearing do not release callback ownership. The retirement receipt is the host helper's resolution/rejection; the CLI reports cleanup failure after publishing its replacement. Real HTTP, file-backed SQLite scheduler/retention, shared PGlite and distinct PGlite conformance. Host conformance additionally exercises detached shared-scheduler queries when the outgoing runtime is outside the dirty query snapshot."
+    "domain": "Eight boot phases and two deferred task identities. A separate retirement projection has one outgoing and one active replacement runtime, a shared or distinct adapter, one initially active write or no write, and two original service-stop callbacks. Shared-query handoff has four initialization modes, three distinct handles for one physical connection plus one unrelated scheduler handle, two queries, at most two handoffs, and one final close. Shared callback retirement covers one or two published replacements of a single physical connection, one outgoing admitted write, and strict or fast final stop.",
+    "scope": "Finite boot/teardown safety and conditional retirement progress. Fast completion and lookup clearing do not release callback ownership. The retirement receipt is the host helper's resolution/rejection; the CLI reports cleanup failure after publishing its replacement. Real HTTP, file-backed SQLite scheduler/retention, shared PGlite and distinct PGlite conformance. Host conformance additionally exercises detached shared-scheduler queries when the outgoing runtime is outside the dirty query snapshot. The host synchronously confirms physical alias identity before its first cleanup await. Existing query records inherit each replacement handle. Identical handles retain the scheduler; distinct active old handles transfer registration to the replacement, while unrelated active schedulers remain attached. A separate callback projection checks synchronous adoption of the old host cleanup, retention through the fast service cap, transitive adoption, and failure receipts after shared close. The published API path already drains rooms before replacement activation. Direct caller misuse, closure failures, and signal hard-exit budgets are outside the bound."
   },
   "cases": [
     {
@@ -54,6 +57,58 @@
         }
       ],
       "maxSteps": 50,
+      "samples": 1000
+    },
+    {
+      "name": "runtime_shared_query_handoff",
+      "main": "runtime_shared_query_handoff",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["DrainCompletes", "DrainWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "DrainCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of each admitted query settling with real success or failure, each captured drain continuation, and final adapter closure. Handoffs happen synchronously after the host confirms common physical storage. Close is requested only after the bounded final handoff. No wall-clock deadline is proved."
+          ]
+        },
+        {
+          "property": "DrainWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. A pending query can remain unsettled forever, so its shared physical connection must remain open."
+          ]
+        }
+      ],
+      "maxSteps": 40,
+      "samples": 1000
+    },
+    {
+      "name": "runtime_shared_callback_handoff",
+      "main": "runtime_shared_callback_handoff",
+      "init": "init",
+      "step": "step",
+      "invariants": ["safety"],
+      "temporal": ["CloseCompletes", "CloseWithoutFairness"],
+      "temporalChecks": [
+        {
+          "property": "CloseCompletes",
+          "expect": "holds",
+          "assumptions": [
+            "Weak fairness of the admitted write settling in success or failure, old stop continuations after the service cap, adopted cleanup settlement, final stop continuation and physical closure. The published API route has drained old rooms. The final adapter close itself is assumed to settle successfully; original cleanup failure remains observable."
+          ]
+        },
+        {
+          "property": "CloseWithoutFairness",
+          "expect": "counterexample",
+          "assumptions": [
+            "No fairness. An accepted old callback can remain pending forever, so even a fast final stop must keep its shared connection open."
+          ]
+        }
+      ],
+      "maxSteps": 40,
       "samples": 1000
     }
   ],

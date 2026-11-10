@@ -363,14 +363,17 @@
       "packages/core/src/runtime/service-lifecycle.ts",
       "packages/core/src/services/task.ts",
       "packages/agent/test/hot-reload-shared-database.test.ts",
-      "packages/core/src/services/task-scheduler.ts"
+      "packages/core/src/services/task-scheduler.ts",
+      "packages/agent/src/api/server.ts",
+      "packages/agent/src/api/agent-admin-routes.ts",
+      "packages/agent/src/api/runtime-replacement-ownership.ts"
     ],
     "invariants": ["safety"],
     "status": "partial",
     "limitations": [
-      "Eight boot phases and two deferred task identities. The retirement refinement has one outgoing and one active replacement runtime, shared/distinct connections, one initially active write or no write, and two original stop callbacks.",
-      "Five maintained cases cover shared/distinct PGlite ownership and authenticated HTTP replacement while actual TaskService and MemoryRetentionService callbacks retain file-backed SQLite work past the real fast-stop cap, including native SQLite write refusal and durable success readback. The host adapter helper is exercised through the injected HTTP callback; complete CLI startup is outside the check. The detached scheduler-query case also verifies that an outgoing adapter is drained without stopping the replacement scheduler, even when the outgoing runtime was outside the dirty snapshot.",
-      "Retirement progress assumes fair storage success/failure settlement, callback settlement, continuation and host cleanup. Individual boot resources, arbitrary callback internals, post-delivery work, late service starts, adapter-close failures, signal exit budgets and self-awaiting hooks remain partial. No wall-clock, implementation trace-refinement or unbounded proof is claimed."
+      "Eight boot phases and two deferred task identities. The retirement refinement has one outgoing and one active replacement runtime, shared/distinct connections, one initially active write or no write, and two original stop callbacks. A separate physical-query projection bounds three aliases of one connection, an unrelated handle, two queries, two handoffs and one final close, including identical-handle reuse. A callback handoff projection adds one outgoing admitted write, one or two synchronous shared-connection adoptions and strict or fast final stop.",
+      "Twelve maintained cases cover shared/distinct PGlite ownership and authenticated HTTP replacement while actual TaskService and MemoryRetentionService callbacks retain file-backed SQLite work past the real fast-stop cap, including native SQLite write refusal and durable success readback. The host adapter helper is exercised through the injected HTTP callback; complete CLI startup is outside the check. The detached scheduler-query case also verifies that an outgoing adapter is drained without stopping the replacement scheduler, even when the outgoing runtime was outside the dirty snapshot. Four additional real PGlite cases exercise active-handle transfer, an already-active replacement, identical-handle preservation, chained aliases, native query failure, concurrent final close and future replacement/unrelated scheduler work. Three actual authenticated HTTP cases also run the replacement shutdown helper against held PGlite retention deletion, including chained publication, durable readback, identical-handle reuse and native write refusal with a failed close receipt.",
+      "Retirement progress assumes fair storage success/failure settlement, callback settlement, continuation and host cleanup. Individual boot resources, arbitrary callback internals, post-delivery work, late service starts, adapter-close failures, signal exit budgets and self-awaiting hooks remain partial. No wall-clock, implementation trace-refinement or unbounded proof is claimed. The callback handoff assumes the published API path drains outgoing room leases before activation; direct helper calls bypassing that contract, external host races, cyclic adoption, and physical adapter failures or reopen remain outside the bound."
     ]
   },
   {
