@@ -438,3 +438,8 @@ Unknown receipts and malformed entries remain intact. KV adoption retains every
 raw entry: this owner has no durable old-writer fence to authorize deletion. KV
 cleanup remains a separate existing-owner obligation. Each list has its own work
 budget, while reading the complete legacy KV array can still exceed that budget.
+
+Registered mobile clients can use a server-configured credential lifetime from
+one day through 365 days. Clients without an explicit lifetime keep the 30-day
+default. This setting applies when a new credential is issued; it does not extend
+an existing credential or bypass activation, revocation, expiry or account checks.

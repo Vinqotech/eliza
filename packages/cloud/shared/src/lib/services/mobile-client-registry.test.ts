@@ -20,6 +20,7 @@ const ALPHA = {
   enabled: true,
 };
 const NINETY_DAYS = 90 * 24 * 60 * 60;
+const ONE_YEAR = 365 * 24 * 60 * 60;
 const reserved = {
   clientId: MOBILE_APP_AUTH_CLIENT_ID,
   appId: PRIMARY_APP,
@@ -33,11 +34,11 @@ const env = (clients: unknown[]) => ({
 });
 
 describe("mobile client registry credential lifetime", () => {
-  test.each([PRIMARY_APP, undefined])(
-    "a registered client may request 90-day credentials with primary app %s",
-    (primaryApp) => {
+  test.each([[PRIMARY_APP,NINETY_DAYS],[undefined,NINETY_DAYS],[PRIMARY_APP,ONE_YEAR],[undefined,ONE_YEAR]] as const)(
+    "a registered client with primary app %s may use an explicit %s-second lifetime",
+    (primaryApp,lifetime) => {
       const configuration = {
-        ...env([{ ...ALPHA, credentialTtlSeconds: NINETY_DAYS }]),
+        ...env([{ ...ALPHA, credentialTtlSeconds: lifetime }]),
         ELIZA_MOBILE_APP_AUTH_APP_ID: primaryApp,
       };
       const registration = resolveMobileAppAuthRegistration(configuration, ALPHA.clientId);
@@ -48,9 +49,9 @@ describe("mobile client registry credential lifetime", () => {
         enabled: true,
         environment: "production",
         scopes: ["cloud:user"],
-        credentialTtlSeconds: NINETY_DAYS,
+        credentialTtlSeconds: lifetime,
       } as never);
-      expect(MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS).toBe(NINETY_DAYS);
+      expect(MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS).toBe(ONE_YEAR);
       if (primaryApp === undefined) {
         expect(() => resolveMobileAppAuthRegistration(configuration)).toThrow(
           "ELIZA_MOBILE_APP_AUTH_APP_ID must be a registered app UUID",
@@ -70,7 +71,7 @@ describe("mobile client registry credential lifetime", () => {
   });
 
   test.each([
-    ["above 90 days", NINETY_DAYS + 1],
+    ["above one year", ONE_YEAR + 1],
     ["below one day", 3_600],
     ["fractional", 86_400.5],
     ["a string", "7776000"],

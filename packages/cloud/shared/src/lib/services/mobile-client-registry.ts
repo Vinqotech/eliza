@@ -6,7 +6,7 @@ export interface RegisteredMobileClient {
   enabled: boolean;
   /**
    * Lifetime of the `eliza_mobile_` credential this client receives. Optional;
-   * the service default (30 days) applies when absent. Bounded to 90 days so a
+   * the service default (30 days) applies when absent. Bounded to one year so a
    * registry edit can never mint an effectively permanent key.
    */
   credentialTtlSeconds?: number;
@@ -15,7 +15,7 @@ export type MobileClientSelection =
   | { ok: true; registration: RegisteredMobileClient }
   | { ok: false; code: "invalid_client" | "server_configuration_error" };
 export const MOBILE_CLIENT_MIN_CREDENTIAL_TTL_SECONDS = 24 * 60 * 60;
-export const MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS = 90 * 24 * 60 * 60;
+export const MOBILE_CLIENT_MAX_CREDENTIAL_TTL_SECONDS = 365 * 24 * 60 * 60;
 const REGISTRATION_KEYS = ["clientId", "appId", "redirectUri", "enabled", "credentialTtlSeconds"];
 export interface MobileClientReservation {
   clientId: string;
